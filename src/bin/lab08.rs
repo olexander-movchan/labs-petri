@@ -1,8 +1,7 @@
-use crate::ptnet::PTNet;
-
-pub mod ptnet;
+use labs_petri::PTNet;
 
 fn main() {
+    std::env::set_var("RUST_LOG", "info");
     env_logger::init();
 
     let mut net = PTNet::new();
@@ -10,7 +9,7 @@ fn main() {
     let a = net.place("a");
     let b = net.place("b");
 
-    net.transition("supply")
+    net.transition("-> a")
         .output(a.clone(), 1);
 
     net.transition("a -> b")
