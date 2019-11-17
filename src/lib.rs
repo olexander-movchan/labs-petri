@@ -33,7 +33,7 @@ impl PTNet {
         self.transitions.last_mut().unwrap()
     }
 
-    pub fn trigger_available(&mut self) -> bool {
+    pub fn fire_enabled(&mut self) -> bool {
         let mut queue = {
             let mut shuffled = self.transitions.clone();
             shuffled.shuffle(&mut thread_rng());
@@ -43,10 +43,10 @@ impl PTNet {
         let mut unavailable = VecDeque::new();
         let mut transitioned = false;
         while let Some(mut tr) = queue.pop_front() {
-            if tr.is_available() {
+            if tr.is_enabled() {
                 transitioned = true;
                 log::info!("Triggering transition {:?}", tr.tag);
-                tr.trigger();
+                tr.fire();
                 queue.append(&mut unavailable);
             } else {
                 unavailable.push_back(tr);
@@ -58,7 +58,7 @@ impl PTNet {
     pub fn run(&mut self, max_iter: usize) -> usize {
         for i in 0..max_iter {
             log::info!("Running iteration {}", i);
-            if !self.trigger_available() {
+            if !self.fire_enabled() {
                 return i;
             }
         }
@@ -117,14 +117,14 @@ impl Transition {
         self
     }
 
-    pub fn is_available(&self) -> bool {
+    pub fn is_enabled(&self) -> bool {
         self.inputs
             .iter()
             .map(|a| a.place.borrow().tokens >= a.weight)
             .fold(true, |acc, available| acc && available)
     }
 
-    pub fn trigger(&mut self) {
+    pub fn fire(&mut self) {
         for arc in self.inputs.iter_mut() {
             let mut place = arc.place.borrow_mut();
             place.tokens -= arc.weight;
