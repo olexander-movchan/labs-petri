@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use rand::{thread_rng, prelude::*};
 
 pub type PlaceRef = Rc<RefCell<Place>>;
@@ -19,9 +18,9 @@ impl PTNet {
         }
     }
 
-    pub fn place(&mut self, tag: &str) -> PlaceRef {
+    pub fn place(&mut self, tag: &str, tokens: usize) -> PlaceRef {
         log::info!("Created place with tag {:?}", tag);
-        let place = Place::new(tag);
+        let place = Place::new(tag, tokens);
         self.places.push(place.clone());
         place
     }
@@ -34,33 +33,38 @@ impl PTNet {
     }
 
     pub fn fire_enabled(&mut self) -> bool {
-        let mut queue = {
+        let mut shuffled = {
             let mut shuffled = self.transitions.clone();
             shuffled.shuffle(&mut thread_rng());
-            VecDeque::from(shuffled)
+            shuffled
         };
 
-        let mut unavailable = VecDeque::new();
-        let mut transitioned = false;
-        while let Some(mut tr) = queue.pop_front() {
+        let mut fired = Vec::new();
+        for tr in shuffled.iter_mut() {
             if tr.is_enabled() {
-                transitioned = true;
-                log::info!("Triggering transition {:?}", tr.tag);
-                tr.fire();
-                queue.append(&mut unavailable);
-            } else {
-                unavailable.push_back(tr);
+                log::info!("Fired transition {:?}", tr.tag);
+                tr.fire_inputs();
+                fired.push(tr);
             }
         }
-        transitioned
+
+        for tr in fired.iter_mut() {
+            tr.fire_outputs()
+        }
+
+        !fired.is_empty()
     }
 
-    pub fn run(&mut self, max_iter: usize) -> usize {
+    pub fn run<CB>(&mut self, max_iter: usize, mut callback: CB) -> usize
+    where
+        CB: FnMut() -> ()
+    {
         for i in 0..max_iter {
             log::info!("Running iteration {}", i);
             if !self.fire_enabled() {
                 return i;
             }
+            callback();
         }
 
         max_iter
@@ -81,10 +85,10 @@ pub struct Place {
 }
 
 impl Place {
-    pub fn new(name: &str) -> PlaceRef {
+    pub fn new(name: &str, tokens: usize) -> PlaceRef {
         Rc::new(RefCell::new(Self {
             name: name.to_string(),
-            tokens: 0,
+            tokens,
         }))
     }
 }
@@ -124,12 +128,14 @@ impl Transition {
             .fold(true, |acc, available| acc && available)
     }
 
-    pub fn fire(&mut self) {
+    pub fn fire_inputs(&mut self) {
         for arc in self.inputs.iter_mut() {
             let mut place = arc.place.borrow_mut();
             place.tokens -= arc.weight;
         }
+    }
 
+    pub fn fire_outputs(&mut self) {
         for arc in self.outputs.iter_mut() {
             let mut place = arc.place.borrow_mut();
             place.tokens += arc.weight;
